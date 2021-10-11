@@ -16,8 +16,8 @@
 # read data from CER_folder - done
 # write temp rds files to tmp_folder - done
 # NEXT -
-# change joins to use dplyr instead of plyr
-# - output folder - RDS
+# change joins to use dplyr instead of plyr - done (except for sys test)
+# - output folder - RDS - done
 # - maybe sys test & log files to test_folder
 # do sys test for SWH & SWHASHP
 # read csv postcode data from APVI exports for range of PV sizes
@@ -26,19 +26,8 @@
 
 
 # Plan for where data should be stored, eg Google Shared Drive
-
-# maybe best if don't explicitly load plyr due to potential conflicts
-# with group_by for doing cumsum
-# not sure either whether need to load lubridate - part of tidyverse ???
-# if(!require(plyr)) {
-# install.packages("plyr") }
-# if(!require(lubridate)) {
-# install.packages("lubridate") }      # Install & load lubridate package
-
 library(lubridate)    # needed for things like line 107 
 library(tidyverse)
-# library(plyr)
-# library(readr)
 # ================================== F U N C T I O N =================
 process_CER_raw_data <- function(CER_type, CER_value) {
   column_pattern_mask = "No column pattern"
@@ -60,17 +49,13 @@ if (CER_type =="SWH_Solar") {
   write_filename_mask = "CER_SWHqty"
 }
 
-# EXCEPT - CER has chandged the file mask for ASHP- current csv doesn't use some dashes
+# EXCEPT - CER has changed the file mask for ASHP- current csv doesn't use some dashes
 # so create a special filelist for ASHP files
-  # set up to read from CER_data folder
-  # Should make this a GLOBAL variable
-  CER_data_folder <- paste(getwd(),"/CER_data/",sep = "")
   if (CER_type =="SWH_ASHP") {
 #    print("in function:SWH_ASHP")
     file_pattern = "SWH-Air-source-heat-pump.csv"
     column_pattern_mask = "...Installations.Quantity"
     write_filename_mask = "CER_SWHASHPqty" 
-
     file_list <- append(
       as.list(list.files(path=CER_data_folder,pattern = "SWH-Air source heat pump.csv")),
       as.list(list.files(path=CER_data_folder,pattern = file_pattern))
@@ -78,13 +63,10 @@ if (CER_type =="SWH_Solar") {
   }
   else {
     # create list of files matching the pattern
-#    print("Diagnostoc: creating normal file_list")
     file_list <- as.list(list.files(path=CER_data_folder,pattern = file_pattern))  
   }
-    
 # This will get patterns such as "SGU-Solar.csv"
 # >>>>>>>> maybe specify explicit path for input data
-  print("List of file about to be processed")
   print(file_list)
   for (filename in file_list) {
     print(sprintf("Processing %s", filename))
@@ -97,7 +79,6 @@ if (CER_type =="SWH_Solar") {
       write_filename = paste(write_filename_mask,".rds",sep = "")
     }
     data <- read.csv(paste(CER_data_folder,filename,sep = ""))
-#    View(data())
     # now make all columns numeric, except first one (postcode)
     all_columns <- colnames(data)
     all_columns_except_first <- all_columns[-1]
@@ -112,7 +93,6 @@ if (CER_type =="SWH_Solar") {
     data[all_columns_except_first] <- sapply(data[all_columns_except_first],as.numeric)
     # make column one (postcode) to character
     data[1] <- sapply(data[1],as.character)
-
     if(is.na(filename_year)) {
       # current data doesn't have yyyy in filename
       # column_pattern will be like  "[a-zA-Z]+.[0-9]+...Installations.Quantity"
@@ -129,6 +109,7 @@ if (CER_type =="SWH_Solar") {
         str_match(colnames(data),column_pattern)))
     # for now, values_to generic "CER_value_col"
     # and then rename the column just before saving
+    # Note that pivot_longer is preferred over gather - https://tidyr.tidyverse.org/reference/pivot_longer.html
     data <- pivot_longer(data,
                          cols = all_of(column_list_vector),
                          names_to = "year_month_string",
@@ -184,11 +165,7 @@ if (CER_type =="SWH_Solar") {
 #    View(data)
     # save the tidy data format as .rds
     print(sprintf("Saving %s",write_filename)) 
-# ======>>>>>>> maybe write these temporary rds files to a "temp" folder ?
-# and use a GLOBAL variable, something like
-   saveRDS(data, paste(tmp_folder,write_filename,sep = ""))
-#    saveRDS(data,file = write_filename)
-    
+    saveRDS(data, paste(tmp_folder,write_filename,sep = ""))
  }
 # E N D   O F   L O O P  - should now have rds files for each year + current
 # Now create a consolidated file of all years data for eg PVqty, PVkW, etc
@@ -199,8 +176,6 @@ if (CER_type =="SWH_Solar") {
   # maybe need to set working directory to "tmp"
   setwd(tmp_folder)
   tidy_file_list <- as.list(list.files(pattern= paste("^",write_filename_mask,".*\\.rds$", sep = "")))
-#  View(tidy_file_list)
-
   # bind all the matching files into a data frame
   my_tidy_data <- do.call(rbind, lapply(tidy_file_list, readRDS))
 #  View(my_tidy_data)
@@ -217,24 +192,19 @@ if (CER_type =="SWH_Solar") {
 
 return(paste("====> exiting function: ",column_pattern_mask))
 }
-
-
-
-
 # ================ T H I S    I S   T H E    R E A L   P R O C E S S =============
 # define some global variables for folders
 base_folder <- getwd()
-CER_data_folder <- paste(getwd(),"/CER_data/",sep = "")
-tmp_folder <- paste(getwd(),"/tmp/",sep = "")
-# output_folder <- paste(getwd(),"/output/",sep = "")
+CER_data_folder <- paste(base_folder,"/CER_data/",sep = "")
+tmp_folder <- paste(base_folder,"/tmp/",sep = "")
+output_folder <- paste(base_folder,"/Output/",sep = "")
 # test_folder <- paste(getwd(),"/test/",sep = "")
+run_time <- sprintf("%s",Sys.time())
 
-
-
-sink(sprintf("CER tidydata:%s.log",Sys.time()))
+sink(sprintf("CER tidydata:%s.log",run_time))
 print("CER tidydata Log")
 print("================")
-print(sprintf("Run on %s",Sys.time() ))
+print(sprintf("Run on %s",run_time))
 
 print("Processing SGU_Solar - PV_kW.......")
 process_CER_raw_data("SGU_Solar", "PV_kW")
@@ -256,24 +226,14 @@ SWH_data <- readRDS(file="CER_SWHqty_all_years.rds")
 SWHASHP_data <- readRDS(file="CER_SWHASHPqty_all_years.rds")
 # now set working directory back to base
 setwd(base_folder)
-# now inner join
-# https://www.rdocumentation.org/packages/plyr/versions/1.8.6/topics/join
-#
-# ========= >>>>>>>> change these to the dplyr "inner_join" equivalents ======
-# and don't use "plyr" so reduce conflicts with groupby / mutate later.....
-library(plyr)
-# do a full join and match all
-data_SGU <- join(qty_data, kW_data,  by = c("Postcode","year_month"), type = "full", match = "all")
+# use full join just in case one of the sets has missing date rows
+# full_join(df_primary, df_secondary, by = 'ID') - https://dplyr.tidyverse.org/reference/mutate-joins.html
+data_SGU <- full_join(qty_data, kW_data, by = c("Postcode","year_month"))
+#  join(qty_data, kW_data,  by = c("Postcode","year_month"), type = "left", match = "first")
 # now join SWH_data
-data_SGU_SHW <- join(data_SGU, SWH_data,  by = c("Postcode","year_month"), type = "full", match = "all")
+data_SGU_SHW <- full_join(data_SGU, SWH_data,  by = c("Postcode","year_month"))
 # now join SWHASHP_data
-data <- join(data_SGU_SHW, SWHASHP_data,  by = c("Postcode","year_month"), type = "full", match = "all")
-#
-# data_SGU <- join(qty_data, kW_data,  by = c("Postcode","year_month"), type = "left", match = "first")
-# # now join SWH_data
-# data_SGU_SHW <- join(data_SGU, SWH_data,  by = c("Postcode","year_month"), type = "left", match = "first")
-# # now join SWHASHP_data
-# data <- join(data_SGU_SHW, SWHASHP_data,  by = c("Postcode","year_month"), type = "left", match = "first")
+data <- full_join(data_SGU_SHW, SWHASHP_data,  by = c("Postcode","year_month"))
 #
 # The joins may result in some numeric columns having NA values
 # So convert all NA values in numeric columns to zero
@@ -287,7 +247,9 @@ data <- data[
 # save joined data to a file - CER_PVqty_kW_all_years.rds
 print("save joined data to a file - CER_PVqty_kW_all_years.rds")
 # ============ >>>>> save in safe, accessible place.....
-saveRDS(data,file = "CER_PVqty_kW_SWH_SWHASHP_all_years.rds")
+saveRDS(data,file = paste(output_folder,"CER_PVqty_kW_SWH_SWHASHP_all_years.rds",sep = ""))
+# and save a copy with a date/time in filename
+saveRDS(data,file = paste(output_folder,"CER_PVqty_kW_SWH_SWHASHP_all_years - ",run_time ,".rds",sep = ""))
 
 # ====================== S Y S T E M    T E S T =========  
 # Test that it works ! 
@@ -338,7 +300,7 @@ calc_SGU_PV_kW <- setNames(
   c("Postcode","Calc_PV_kW")
 )
 # and join them into a single table
-calc_SGU_PV_qty_kW <- join(calc_SGU_PV_qty, calc_SGU_PV_kW, by = "Postcode", type = "left", match = "first")
+calc_SGU_PV_qty_kW <- full_join(calc_SGU_PV_qty, calc_SGU_PV_kW, by = "Postcode")
 
 # now get the current CER SGU csv
 # rename Postcode column for joining & just keep totals columns
@@ -356,7 +318,7 @@ data_SGU$Installations.Quantity.Total <- as.numeric(gsub(",","",
 data_SGU$SGU.Rated.Output.In.kW.Total <- as.numeric(gsub(",","",
                 data_SGU$SGU.Rated.Output.In.kW.Total))
 # now join all
-compare_SGU_data <- join(calc_SGU_PV_qty_kW, data_SGU, by = "Postcode", type = "left", match = "first")
+compare_SGU_data <- full_join(calc_SGU_PV_qty_kW, data_SGU, by = "Postcode")
 # save the test results
 print("save test results")
 saveRDS(compare_SGU_data,file = paste("Test : ",Sys.time(),".rds",sep = ""))
@@ -371,18 +333,3 @@ print(sprintf("Sum of SGU qty checks : %f",sum(compare_SGU_data$qty_check)))
 print(sprintf("Sum of SGU kW checks  : %f",sum(compare_SGU_data$kW_check)))
 sink()
 # ============== E N D   O F  S Y S T E M   T E S T ============
-# Here's a quick visualisation for a single 
-mypostcode <- read_data[read_data$Postcode=="4563",]
-### add cumulative columns to the data frame
-mypostcode[,"total_PV_kW"] <- cumsum(mypostcode$PV_kW)
-mypostcode[,"total_PV_qty"] <- cumsum(mypostcode$PV_qty)
-print(summary(mypostcode))
-
-ggplot(mypostcode, 
-       aes(x=year_month,y=total_PV_qty)) +
-  geom_point()
-
-ggplot(mypostcode, 
-       aes(x=year_month,y=total_PV_kW)) +
-  geom_point()
-
