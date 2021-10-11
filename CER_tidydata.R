@@ -23,8 +23,6 @@
 # read csv postcode data from APVI exports for range of PV sizes
 # join with Noosa data
 
-
-
 # Plan for where data should be stored, eg Google Shared Drive
 library(lubridate)    # needed for things like line 107 
 library(tidyverse)
@@ -217,29 +215,35 @@ process_CER_raw_data("SWH_ASHP", "SWHASHP_qty")
 # now consolidate.......
 # read in PVqty_all years & PVkW_all years, join & save as .rds
 print("read in PVqty_all years & PVkW_all years, join & save as .rds")
-# ========== >>>>>> maybe from "temp" folder
 # maybe need to set working directory to "tmp"
+# use pipe to shorten & not create tmp data frames
+# https://www.statology.org/join-multiple-data-frames-dplyr/
 setwd(tmp_folder)
-qty_data <- readRDS(file="CER_PVqty_all_years.rds")
-kW_data <- readRDS(file="CER_PVkW_all_years.rds")
-SWH_data <- readRDS(file="CER_SWHqty_all_years.rds")
-SWHASHP_data <- readRDS(file="CER_SWHASHPqty_all_years.rds")
+data <- readRDS(file="CER_PVqty_all_years.rds") %>%
+    full_join(readRDS(file="CER_PVkW_all_years.rds"),by = c("Postcode","year_month")) %>%
+    full_join(readRDS(file="CER_SWHqty_all_years.rds"), by = c("Postcode","year_month")) %>%
+    full_join(readRDS(file="CER_SWHASHPqty_all_years.rds"), by = c("Postcode","year_month"))
 # now set working directory back to base
-setwd(base_folder)
-# use full join just in case one of the sets has missing date rows
-# full_join(df_primary, df_secondary, by = 'ID') - https://dplyr.tidyverse.org/reference/mutate-joins.html
-data_SGU <- full_join(qty_data, kW_data, by = c("Postcode","year_month"))
-#  join(qty_data, kW_data,  by = c("Postcode","year_month"), type = "left", match = "first")
-# now join SWH_data
-data_SGU_SHW <- full_join(data_SGU, SWH_data,  by = c("Postcode","year_month"))
-# now join SWHASHP_data
-data <- full_join(data_SGU_SHW, SWHASHP_data,  by = c("Postcode","year_month"))
-#
+setwd(base_folder)  
+# ===== old way ======
+# setwd(tmp_folder)
+# qty_data <- readRDS(file="CER_PVqty_all_years.rds")
+# kW_data <- readRDS(file="CER_PVkW_all_years.rds")
+# SWH_data <- readRDS(file="CER_SWHqty_all_years.rds")
+# SWHASHP_data <- readRDS(file="CER_SWHASHPqty_all_years.rds")
+# # now set working directory back to base
+# setwd(base_folder)
+# # use full join just in case one of the sets has missing date rows
+# # full_join(df_primary, df_secondary, by = 'ID') - https://dplyr.tidyverse.org/reference/mutate-joins.html
+# data_SGU <- full_join(qty_data, kW_data, by = c("Postcode","year_month"))
+# # now join SWH_data
+# data_SGU_SHW <- full_join(data_SGU, SWH_data,  by = c("Postcode","year_month"))
+# # now join SWHASHP_data
+# data <- full_join(data_SGU_SHW, SWHASHP_data,  by = c("Postcode","year_month"))
 # The joins may result in some numeric columns having NA values
 # So convert all NA values in numeric columns to zero
 # https://www.delftstack.com/howto/r/replace-na-with-0-in-r/
 data <- mutate_if(data, is.numeric, ~replace(., is.na(.), 0))
-
 # Sort by postcode, then year_month - just in case
 data <- data[
   with(data, order(Postcode, year_month)),
