@@ -1,6 +1,10 @@
 # ZEN-data
 ## Analysis of electricity data from public sources
 
+For more complete information please see the 
+[ZEN-data Wiki](../../wiki)
+
+
 ## Distributed Energy Resources
 
 ### Stage 1
