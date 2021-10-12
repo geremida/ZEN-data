@@ -46,11 +46,9 @@ if (CER_type =="SWH_Solar") {
   column_pattern_mask = "...Installations.Quantity"
   write_filename_mask = "CER_SWHqty"
 }
-
 # EXCEPT - CER has changed the file mask for ASHP- current csv doesn't use some dashes
 # so create a special filelist for ASHP files
   if (CER_type =="SWH_ASHP") {
-#    print("in function:SWH_ASHP")
     file_pattern = "SWH-Air-source-heat-pump.csv"
     column_pattern_mask = "...Installations.Quantity"
     write_filename_mask = "CER_SWHASHPqty" 
@@ -64,10 +62,9 @@ if (CER_type =="SWH_Solar") {
     file_list <- as.list(list.files(path=CER_data_folder,pattern = file_pattern))  
   }
 # This will get patterns such as "SGU-Solar.csv"
-# >>>>>>>> maybe specify explicit path for input data
-  print(file_list)
+#  print(file_list)
   for (filename in file_list) {
-    print(sprintf("Processing %s", filename))
+    # print(sprintf("Processing %s", filename))
     #  check if filename has "yyyy" in it - no year = current
     filename_year <- str_match(filename,"[0-9]+")
     if(!is.na(filename_year))  {
@@ -90,7 +87,11 @@ if (CER_type =="SWH_Solar") {
     # now cast to numeric
     data[all_columns_except_first] <- sapply(data[all_columns_except_first],as.numeric)
     # make column one (postcode) to character
-    data[1] <- sapply(data[1],as.character)
+    # ================ try as integer instead ===================
+#    data[1] <- sapply(data[1],as.character)
+    # do this later just before saving......
+  
+    
     if(is.na(filename_year)) {
       # current data doesn't have yyyy in filename
       # column_pattern will be like  "[a-zA-Z]+.[0-9]+...Installations.Quantity"
@@ -127,32 +128,34 @@ if (CER_type =="SWH_Solar") {
                    %m-% days(1)
     )
     # rename the postcode column
-    data <- relocate(data, Postcode = Small.Unit.Installation.Postcode)
+    data <- rename(data, Postcode = Small.Unit.Installation.Postcode)
+    # and make Postcode column integer
+    data <- data %>% mutate(Postcode = as.integer((Postcode)))  
     # now just retain the columns we want
     data <- data[,names(data) %in% c("Postcode",
                                      "year_month","CER_value_col")]
     # rename the CER_value_col
     if(CER_value == "PV_qty") {
       # rename the CER_value_col column
-      data <- relocate(data, PV_qty = CER_value_col)
+      data <- rename(data, PV_qty = CER_value_col)
       # get the columns in the right order
       data <- relocate(data, PV_qty, .after = year_month)
     }
     if(CER_value == "PV_kW") {
       # rename the CER_value_col column
-      data <- relocate(data, PV_kW = CER_value_col)
+      data <- rename(data, PV_kW = CER_value_col)
       # get the columns in the right order
       data <- relocate(data, PV_kW, .after = year_month)
     }
     if(CER_value == "SWH_qty") {
       # rename the CER_value_col column
-      data <- relocate(data, SWH_qty = CER_value_col)
+      data <- rename(data, SWH_qty = CER_value_col)
       # get the columns in the right order
       data <- relocate(data, SWH_qty, .after = year_month)
     }
     if(CER_value == "SWHASHP_qty") {
       # rename the CER_value_col column
-      data <- relocate(data, SWHASHP_qty = CER_value_col)
+      data <- rename(data, SWHASHP_qty = CER_value_col)
       # get the columns in the right order
       data <- relocate(data, SWHASHP_qty, .after = year_month)
     }
@@ -168,28 +171,95 @@ if (CER_type =="SWH_Solar") {
 # E N D   O F   L O O P  - should now have rds files for each year + current
 # Now create a consolidated file of all years data for eg PVqty, PVkW, etc
 # Read all the CER_PVqty/kW, etc rds files into a dataframe
-
-#  print(paste("^",write_filename_mask,".*\\.rds$", sep = ""))
-  # should give us a list matching patterns like "^CER_PVqty.*\\.rds$"
-  # maybe need to set working directory to "tmp"
+# should give us a list matching patterns like "^CER_PVqty.*\\.rds$"
   setwd(tmp_folder)
   tidy_file_list <- as.list(list.files(pattern= paste("^",write_filename_mask,".*\\.rds$", sep = "")))
   # bind all the matching files into a data frame
   my_tidy_data <- do.call(rbind, lapply(tidy_file_list, readRDS))
-#  View(my_tidy_data)
   # now set working directory back to base
   setwd(base_folder)
   # Sort by postcode, then year_month
   my_tidy_data <- my_tidy_data[
     with(my_tidy_data, order(Postcode, year_month)),
   ]
-  # save this to a file like CER_PVqty_all_years.rds
+  # save this to a file like CER_PVqty_all_years.rds in tmp folder
   print(sprintf("Writing %s", paste(write_filename_mask,"_all_years.rds", sep = "")))
-# ======>>>>>>> maybe write these temporary rds files to a "temp" folder ?
-    saveRDS(my_tidy_data, file = paste(tmp_folder,write_filename_mask,"_all_years.rds", sep = ""))
-
-return(paste("====> exiting function: ",column_pattern_mask))
+  saveRDS(my_tidy_data, file = paste(tmp_folder,write_filename_mask,"_all_years.rds", sep = ""))
+return(paste("====> exiting function: ",write_filename_mask))
 }
+
+# ================================== F U N C T I O N =================
+test_CER_PVkW <- function() {
+
+# Now do a test  
+# Try doing test for CER_PVkW_all_years.rds
+# and check totals against csv file in CER_data
+# Then repeat for other data - PVqty, SWH, SWHASHP
+print("========== S Y S T E M    T E S T - PVkW =========")
+print("readRDS CER_PVkW_all_years.rds")
+read_data <- readRDS(file=paste(tmp_folder,"CER_PVkW_all_years.rds",sep = ""))
+print("Calculate totals")
+calc_PV_kW_total <- sum(read_data$PV_kW,na.rm=TRUE)
+
+print("read current - Postcode data for small-scale installations - SGU-Solar.csv")
+print("and extract totals")
+data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SGU-Solar.csv",sep = ""))
+# Removing commas from selected columns
+# Prior to setting to numeric
+# https://statisticsglobe.com/modify-numbers-with-comma-as-thousand-separator-in-r
+col_conv <- setdiff(names(data_SGU),"Small.Unit.Installation.Postcode")
+data_SGU[ , col_conv] <- lapply(data_SGU[ , col_conv],  # Convert data
+                                function(x){ as.numeric(as.character(gsub(",", "", x))) })
+# set the last 2 columns as numeric
+data_SGU$SGU.Rated.Output.In.kW.Total <- as.numeric(as.character(data_SGU$SGU.Rated.Output.In.kW.Total))
+
+raw_PV_kW_total <- sum(data_SGU$SGU.Rated.Output.In.kW.Total,na.rm=TRUE)
+print("===== Totals =====")
+print(sprintf("Calc PV kW         = %f", calc_PV_kW_total))
+print(sprintf("Raw PV kW          = %f", raw_PV_kW_total))
+print(sprintf("Difference         = %f", calc_PV_kW_total - raw_PV_kW_total))
+print(sprintf("Difference percent = %f", 100*(calc_PV_kW_total-raw_PV_kW_total)/raw_PV_kW_total))
+}
+
+# ================================== F U N C T I O N =================
+test_CER_PVqty <- function() {
+  
+  # Now do a test  
+  # Try doing test for CER_PVqty_all_years.rds
+  # and check totals against csv file in CER_data
+  # Then repeat for other data - PVqty, SWH, SWHASHP
+  print("========== S Y S T E M    T E S T - PVkW =========")
+  print("readRDS CER_PVqty_all_years.rds")
+  read_data <- readRDS(file=paste(tmp_folder,"CER_PVqty_all_years.rds",sep = ""))
+  print("Calculate totals")
+  calc_PV_qty_total <- sum(read_data$PV_qty,na.rm=TRUE)
+  
+  print("read current - Postcode data for small-scale installations - SGU-Solar.csv")
+  print("and extract totals")
+  data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SGU-Solar.csv",sep = ""))
+  # Removing commas from selected columns
+  # Prior to setting to numeric
+  # https://statisticsglobe.com/modify-numbers-with-comma-as-thousand-separator-in-r
+  col_conv <- setdiff(names(data_SGU),"Small.Unit.Installation.Postcode")
+  data_SGU[ , col_conv] <- lapply(data_SGU[ , col_conv],  # Convert data
+                                  function(x){ as.numeric(as.character(gsub(",", "", x))) })
+  # set the last 2 columns as numeric
+  data_SGU$Installations.Quantity.Total <- as.numeric(as.character(data_SGU$Installations.Quantity.Total))
+#  data_SGU$SGU.Rated.Output.In.kW.Total <- as.numeric(as.character(data_SGU$SGU.Rated.Output.In.kW.Total))
+  
+  raw_PV_qty_total <- sum(data_SGU$Installations.Quantity.Total,na.rm=TRUE)
+#  raw_PV_kW_total <- sum(data_SGU$SGU.Rated.Output.In.kW.Total,na.rm=TRUE)
+  print("===== Totals =====")
+  print(sprintf("Calc PV total qty = %f", calc_PV_qty_total))
+  print(sprintf("Raw PV total qty  = %f", raw_PV_qty_total))
+#  print(sprintf("Calc PV kW        = %f", calc_PV_kW_total))
+#  print(sprintf("Raw PV kW         = %f", raw_PV_kW_total))
+  
+  print(sprintf("Difference         = %f", calc_PV_qty_total - raw_PV_qty_total))
+  print(sprintf("Difference percent = %f", 100*(calc_PV_qty_total-raw_PV_qty_total)/raw_PV_qty_total))
+}
+
+
 # ================ T H I S    I S   T H E    R E A L   P R O C E S S =============
 # define some global variables for folders
 base_folder <- getwd()
@@ -206,8 +276,12 @@ print(sprintf("Run on %s",run_time))
 
 print("Processing SGU_Solar - PV_kW.......")
 process_CER_raw_data("SGU_Solar", "PV_kW")
+test_CER_PVkW()
+
 print("Processing SGU_Solar - PV_qty.......")
 process_CER_raw_data("SGU_Solar", "PV_qty")
+test_CER_PVqty()
+
 print("Processing SWH_Solar - SWHqty.......")
 process_CER_raw_data("SWH_Solar", "SWH_qty")
 print("Processing SWH_ASHP - SWHASHPqty.......")
@@ -215,31 +289,13 @@ process_CER_raw_data("SWH_ASHP", "SWHASHP_qty")
 # now consolidate.......
 # read in PVqty_all years & PVkW_all years, join & save as .rds
 print("read in PVqty_all years & PVkW_all years, join & save as .rds")
-# maybe need to set working directory to "tmp"
-# use pipe to shorten & not create tmp data frames
 # https://www.statology.org/join-multiple-data-frames-dplyr/
 setwd(tmp_folder)
 data <- readRDS(file="CER_PVqty_all_years.rds") %>%
     full_join(readRDS(file="CER_PVkW_all_years.rds"),by = c("Postcode","year_month")) %>%
     full_join(readRDS(file="CER_SWHqty_all_years.rds"), by = c("Postcode","year_month")) %>%
     full_join(readRDS(file="CER_SWHASHPqty_all_years.rds"), by = c("Postcode","year_month"))
-# now set working directory back to base
 setwd(base_folder)  
-# ===== old way ======
-# setwd(tmp_folder)
-# qty_data <- readRDS(file="CER_PVqty_all_years.rds")
-# kW_data <- readRDS(file="CER_PVkW_all_years.rds")
-# SWH_data <- readRDS(file="CER_SWHqty_all_years.rds")
-# SWHASHP_data <- readRDS(file="CER_SWHASHPqty_all_years.rds")
-# # now set working directory back to base
-# setwd(base_folder)
-# # use full join just in case one of the sets has missing date rows
-# # full_join(df_primary, df_secondary, by = 'ID') - https://dplyr.tidyverse.org/reference/mutate-joins.html
-# data_SGU <- full_join(qty_data, kW_data, by = c("Postcode","year_month"))
-# # now join SWH_data
-# data_SGU_SHW <- full_join(data_SGU, SWH_data,  by = c("Postcode","year_month"))
-# # now join SWHASHP_data
-# data <- full_join(data_SGU_SHW, SWHASHP_data,  by = c("Postcode","year_month"))
 # The joins may result in some numeric columns having NA values
 # So convert all NA values in numeric columns to zero
 # https://www.delftstack.com/howto/r/replace-na-with-0-in-r/
@@ -249,7 +305,7 @@ data <- data[
   with(data, order(Postcode, year_month)),
 ]
 # save joined data to a file - CER_PVqty_kW_all_years.rds
-print("save joined data to a file - CER_PVqty_kW_all_years.rds")
+print("save joined data to a file - CER_PVqty_kW_SWH_SWHASHP_all_years.rds")
 # ============ >>>>> save in safe, accessible place.....
 saveRDS(data,file = paste(output_folder,"CER_PVqty_kW_SWH_SWHASHP_all_years.rds",sep = ""))
 # and save a copy with a date/time in filename
@@ -259,15 +315,15 @@ saveRDS(data,file = paste(output_folder,"CER_PVqty_kW_SWH_SWHASHP_all_years - ",
 # Test that it works ! 
 # *************** Need to update for SWH & SWHASHP data ****************
 print("====================== S Y S T E M    T E S T =========")
-print("readRDS CER_PVqty_kW_all_years.rds")
-read_data <- readRDS(file="CER_PVqty_kW_all_years.rds")
+print("readRDS CER_PVqty_kW_SWH_SWHASHP_all_years.rds")
+read_data <- readRDS(file=paste(output_folder,"CER_PVqty_kW_SWH_SWHASHP_all_years.rds",sep = ""))
 print("Calculate totals")
 calc_PV_qty_total <- sum(read_data$PV_qty,na.rm=TRUE)
 calc_PV_kW_total <- sum(read_data$PV_kW,na.rm=TRUE)
 
 print("read current - Postcode data for small-scale installations - SGU-Solar.csv")
 print("and extract totals")
-data_SGU = read.csv("Postcode data for small-scale installations - SGU-Solar.csv")
+data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SGU-Solar.csv",sep = ""))
 # Removing commas from selected columns
 # Prior to setting to numeric
 # https://statisticsglobe.com/modify-numbers-with-comma-as-thousand-separator-in-r
@@ -308,13 +364,22 @@ calc_SGU_PV_qty_kW <- full_join(calc_SGU_PV_qty, calc_SGU_PV_kW, by = "Postcode"
 
 # now get the current CER SGU csv
 # rename Postcode column for joining & just keep totals columns
-data_SGU = read.csv("Postcode data for small-scale installations - SGU-Solar.csv")
+data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SGU-Solar.csv",sep = ""))
 # rename the Postcode column
-data_SGU <- relocate(data_SGU, Postcode = Small.Unit.Installation.Postcode)
+# better to use rename rather than relocate
+data_SGU <- rename(data_SGU, Postcode = Small.Unit.Installation.Postcode)
 # now just retain the columns we want
 data_SGU <- data_SGU[,names(data_SGU) %in% c("Postcode",
                                  "Installations.Quantity.Total",
                                  "SGU.Rated.Output.In.kW.Total")]
+# make the Postcode column - character
+# ====== make as integer instead ================= ?????
+data_SGU$Postcode <- as.integer(data_SGU$Postcode)
+
+# mtcars %<>% mutate(qsec = as.integer(qsec))
+
+
+# data_SGU$Postcode <- as.character(data_SGU$Postcode)
 # make the columns numeric
 # but make sure we strip out commas first !
 data_SGU$Installations.Quantity.Total <- as.numeric(gsub(",","",
@@ -323,6 +388,7 @@ data_SGU$SGU.Rated.Output.In.kW.Total <- as.numeric(gsub(",","",
                 data_SGU$SGU.Rated.Output.In.kW.Total))
 # now join all
 compare_SGU_data <- full_join(calc_SGU_PV_qty_kW, data_SGU, by = "Postcode")
+# may have to clear out N/A ????????
 # save the test results
 print("save test results")
 saveRDS(compare_SGU_data,file = paste("Test : ",Sys.time(),".rds",sep = ""))
@@ -333,7 +399,52 @@ compare_SGU_data$kW_check <- compare_SGU_data$Calc_PV_kW -
   compare_SGU_data$SGU.Rated.Output.In.kW.Total
 # can also check by viewing the dataframe & sorting compare columns
 print("====== Results of checks at postcode level =====")
-print(sprintf("Sum of SGU qty checks : %f",sum(compare_SGU_data$qty_check)))
-print(sprintf("Sum of SGU kW checks  : %f",sum(compare_SGU_data$kW_check)))
+print(sprintf("Sum of SGU qty checks : %f",sum(compare_SGU_data$qty_check,na.rm=TRUE)))
+print(sprintf("Sum of SGU kW checks  : %f",sum(compare_SGU_data$kW_check,na.rm=TRUE)))
 sink()
 # ============== E N D   O F  S Y S T E M   T E S T ============
+mypostcode <- read_data[read_data$Postcode=="2486",]
+
+# for all months from 2020, get 4 entries per month, so 4 times PVqty & PVkW
+# so maybe try with postcode as integer ????
+
+
+
+setwd(tmp_folder)
+test_data <- readRDS(file="CER_PVkW.rds")
+# Sort by year_month then postcode - to check for duplicates
+sorted_data <- test_data[
+  with(test_data, order(year_month, Postcode)),
+]
+setwd(base_folder) 
+converted_data <- test_data %>% mutate(Postcode = as.integer((Postcode)))
+
+# Try doing test for CER_PVkW_all_years.rds
+# and check totals against csv file in CER_data
+# Then repeat for other data - PVqty, SWH, SWHASHP
+print("========== S Y S T E M    T E S T - PVkW =========")
+print("readRDS CER_PVkW_all_years.rds")
+read_data <- readRDS(file=paste(tmp_folder,"CER_PVkW_all_years.rds",sep = ""))
+print("Calculate totals")
+calc_PV_kW_total <- sum(read_data$PV_kW,na.rm=TRUE)
+
+print("read current - Postcode data for small-scale installations - SGU-Solar.csv")
+print("and extract totals")
+data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SGU-Solar.csv",sep = ""))
+# Removing commas from selected columns
+# Prior to setting to numeric
+# https://statisticsglobe.com/modify-numbers-with-comma-as-thousand-separator-in-r
+col_conv <- setdiff(names(data_SGU),"Small.Unit.Installation.Postcode")
+data_SGU[ , col_conv] <- lapply(data_SGU[ , col_conv],  # Convert data
+                                function(x){ as.numeric(as.character(gsub(",", "", x))) })
+# set the last 2 columns as numeric
+data_SGU$SGU.Rated.Output.In.kW.Total <- as.numeric(as.character(data_SGU$SGU.Rated.Output.In.kW.Total))
+
+raw_PV_kW_total <- sum(data_SGU$SGU.Rated.Output.In.kW.Total,na.rm=TRUE)
+print("===== Totals =====")
+print(sprintf("Calc PV kW        = %f", calc_PV_kW_total))
+print(sprintf("Raw PV kW         = %f", raw_PV_kW_total))
+
+
+
+
