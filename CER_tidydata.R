@@ -228,7 +228,7 @@ test_CER_PVqty <- function() {
   # Try doing test for CER_PVqty_all_years.rds
   # and check totals against csv file in CER_data
   # Then repeat for other data - PVqty, SWH, SWHASHP
-  print("========== S Y S T E M    T E S T - PVkW =========")
+  print("========== S Y S T E M    T E S T - PVqty =========")
   print("readRDS CER_PVqty_all_years.rds")
   read_data <- readRDS(file=paste(tmp_folder,"CER_PVqty_all_years.rds",sep = ""))
   print("Calculate totals")
@@ -259,6 +259,79 @@ test_CER_PVqty <- function() {
   print(sprintf("Difference percent = %f", 100*(calc_PV_qty_total-raw_PV_qty_total)/raw_PV_qty_total))
 }
 
+# ================================== F U N C T I O N =================
+test_CER_SWH <- function() {
+  
+  # Now do a test  
+  # Try doing test for CER_SWH_all_years.rds
+  # and check totals against csv file in CER_data
+  # Then repeat for other data - PVqty, SWH, SWHASHP
+  print("========== S Y S T E M    T E S T - SWH =========")
+  print("readRDS CER_SWHqty_all_years.rds")
+  read_data <- readRDS(file=paste(tmp_folder,"CER_SWHqty_all_years.rds",sep = ""))
+  print("Calculate totals")
+  calc_SWH_qty_total <- sum(read_data$SWH_qty,na.rm=TRUE)
+  
+  print("read current - Postcode data for small-scale installations - SWH-Solar.csv")
+  print("and extract totals")
+  data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SWH-Solar.csv",sep = ""))
+  # Removing commas from selected columns
+  # Prior to setting to numeric
+  # https://statisticsglobe.com/modify-numbers-with-comma-as-thousand-separator-in-r
+  col_conv <- setdiff(names(data_SGU),"Small.Unit.Installation.Postcode")
+  data_SGU[ , col_conv] <- lapply(data_SGU[ , col_conv],  # Convert data
+                                  function(x){ as.numeric(as.character(gsub(",", "", x))) })
+  # set the last column as numeric
+  data_SGU$Installations.Quantity.Total <- as.numeric(as.character(data_SGU$Installations.Quantity.Total))
+  #  data_SGU$SGU.Rated.Output.In.kW.Total <- as.numeric(as.character(data_SGU$SGU.Rated.Output.In.kW.Total))
+  
+  raw_SWH_qty_total <- sum(data_SGU$Installations.Quantity.Total,na.rm=TRUE)
+  #  raw_PV_kW_total <- sum(data_SGU$SGU.Rated.Output.In.kW.Total,na.rm=TRUE)
+  print("===== Totals =====")
+  print(sprintf("Calc SWH total qty = %f", calc_SWH_qty_total))
+  print(sprintf("Raw SWH total qty  = %f", raw_SWH_qty_total))
+
+  print(sprintf("Difference         = %f", calc_SWH_qty_total - raw_SWH_qty_total))
+  print(sprintf("Difference percent = %f", 100*(calc_SWH_qty_total-raw_SWH_qty_total)/raw_SWH_qty_total))
+}
+
+# ================================== F U N C T I O N =================
+test_CER_SWHASHP <- function() {
+  
+  # Now do a test  
+  # Try doing test for CER_SWH_all_years.rds
+  # and check totals against csv file in CER_data
+  # Then repeat for other data - PVqty, SWH, SWHASHP
+  print("========== S Y S T E M    T E S T - SWHASHP =========")
+  print("readRDS CER_SWHASHPqty_all_years.rds")
+  read_data <- readRDS(file=paste(tmp_folder,"CER_SWHASHPqty_all_years.rds",sep = ""))
+  print("Calculate totals")
+  calc_SWHASHP_qty_total <- sum(read_data$SWHASHP_qty,na.rm=TRUE)
+  
+  print("read current - Postcode data for small-scale installations - SWH-Air source heat pump.csv")
+  print("and extract totals")
+  data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SWH-Air source heat pump.csv",sep = ""))
+  # Removing commas from selected columns
+  # Prior to setting to numeric
+  # https://statisticsglobe.com/modify-numbers-with-comma-as-thousand-separator-in-r
+  col_conv <- setdiff(names(data_SGU),"Small.Unit.Installation.Postcode")
+  data_SGU[ , col_conv] <- lapply(data_SGU[ , col_conv],  # Convert data
+                                  function(x){ as.numeric(as.character(gsub(",", "", x))) })
+  # set the last column as numeric
+  data_SGU$Installations.Quantity.Total <- as.numeric(as.character(data_SGU$Installations.Quantity.Total))
+  #  data_SGU$SGU.Rated.Output.In.kW.Total <- as.numeric(as.character(data_SGU$SGU.Rated.Output.In.kW.Total))
+  
+  raw_SWHASHP_qty_total <- sum(data_SGU$Installations.Quantity.Total,na.rm=TRUE)
+  #  raw_PV_kW_total <- sum(data_SGU$SGU.Rated.Output.In.kW.Total,na.rm=TRUE)
+  print("===== Totals =====")
+  print(sprintf("Calc SWHASHP total qty = %f", calc_SWHASHP_qty_total))
+  print(sprintf("Raw SWHASHP total qty  = %f", raw_SWHASHP_qty_total))
+  
+  print(sprintf("Difference         = %f", calc_SWHASHP_qty_total - raw_SWHASHP_qty_total))
+  print(sprintf("Difference percent = %f", 100*(calc_SWHASHP_qty_total-raw_SWHASHP_qty_total)/raw_SWHASHP_qty_total))
+}
+
+
 
 # ================ T H I S    I S   T H E    R E A L   P R O C E S S =============
 # define some global variables for folders
@@ -284,8 +357,12 @@ test_CER_PVqty()
 
 print("Processing SWH_Solar - SWHqty.......")
 process_CER_raw_data("SWH_Solar", "SWH_qty")
+test_CER_SWH()
+
 print("Processing SWH_ASHP - SWHASHPqty.......")
 process_CER_raw_data("SWH_ASHP", "SWHASHP_qty")
+test_CER_SWHASHP()
+
 # now consolidate.......
 # read in PVqty_all years & PVkW_all years, join & save as .rds
 print("read in PVqty_all years & PVkW_all years, join & save as .rds")
