@@ -64,7 +64,7 @@ if (CER_type =="SWH_Solar") {
 # This will get patterns such as "SGU-Solar.csv"
 #  print(file_list)
   for (filename in file_list) {
-    # print(sprintf("Processing %s", filename))
+    print(sprintf("Processing %s", filename))
     #  check if filename has "yyyy" in it - no year = current
     filename_year <- str_match(filename,"[0-9]+")
     if(!is.na(filename_year))  {
@@ -74,6 +74,7 @@ if (CER_type =="SWH_Solar") {
       write_filename = paste(write_filename_mask,".rds",sep = "")
     }
     data <- read.csv(paste(CER_data_folder,filename,sep = ""))
+    print(sprintf("Number of rows = %f", nrow(data)))
     # now make all columns numeric, except first one (postcode)
     all_columns <- colnames(data)
     all_columns_except_first <- all_columns[-1]
@@ -86,11 +87,28 @@ if (CER_type =="SWH_Solar") {
       function(x){ as.numeric(as.character(gsub(",", "", x))) })
     # now cast to numeric
     data[all_columns_except_first] <- sapply(data[all_columns_except_first],as.numeric)
-    # make column one (postcode) to character
+# rename columns now, so can more easily remove duplicate rows (min value)
+    data <- rename(data, Postcode = 1,
+                 Previous = 2)      
+    
+    
+    # check if any duplicate postcodes
+    my_duplicated <- duplicated(data[,1])
+    sum_my_duplicates = sum(my_duplicated)
+    print(sprintf("Duplicate Postcode         = %f", sum_my_duplicates))
+        # make column one (postcode) to character
     # ================ try as integer instead ===================
 #    data[1] <- sapply(data[1],as.character)
     # do this later just before saving......
-  
+    if(sum_my_duplicates > 0) {
+        my_duplicated_table <- data[my_duplicated,]
+        # https://www.biostars.org/p/304213/
+        # remove duplicates - keep highest value of a column
+        data_before_remove <- data
+        data <- data[order(data$Postcode, -abs(data$Previous) ), ] ### sort first
+        data <- data[ !duplicated(data$Postcode), ]  ### Keep highest
+        browser(text="Found duplicates")
+    }
     
     if(is.na(filename_year)) {
       # current data doesn't have yyyy in filename
@@ -128,9 +146,22 @@ if (CER_type =="SWH_Solar") {
                    %m-% days(1)
     )
     # rename the postcode column
-    data <- rename(data, Postcode = Small.Unit.Installation.Postcode)
+    # already done above
+#    data <- rename(data, Postcode = Small.Unit.Installation.Postcode)
     # and make Postcode column integer
     data <- data %>% mutate(Postcode = as.integer((Postcode)))  
+
+    # swhashp_totals <- data.frame(year = numeric(),          
+    #                              year_total = numeric(),
+    #                              total_qty = numeric() )       
+    if(CER_value == "SWHASHP_qty") {
+      # before we remove columns, get the sum of last column & save it
+      browser(text="about to SWHASHP adding rows for years")
+      swhashp_totals <- swhashp_totals %>% add_row(year=as.integer(filename_year),
+              year_total = sum(data$CER_value_col),
+              total_qty = sum(data$Installations.Quantity.Total))
+      browser(text="SWHASHP adding rows for years")
+    }
     # now just retain the columns we want
     data <- data[,names(data) %in% c("Postcode",
                                      "year_month","CER_value_col")]
@@ -188,6 +219,7 @@ if (CER_type =="SWH_Solar") {
 return(paste("====> exiting function: ",write_filename_mask))
 }
 
+
 # ================================== F U N C T I O N =================
 test_CER_PVkW <- function() {
 
@@ -200,7 +232,6 @@ print("readRDS CER_PVkW_all_years.rds")
 read_data <- readRDS(file=paste(tmp_folder,"CER_PVkW_all_years.rds",sep = ""))
 print("Calculate totals")
 calc_PV_kW_total <- sum(read_data$PV_kW,na.rm=TRUE)
-
 print("read current - Postcode data for small-scale installations - SGU-Solar.csv")
 print("and extract totals")
 data_SGU = read.csv(paste(CER_data_folder,"Postcode data for small-scale installations - SGU-Solar.csv",sep = ""))
@@ -329,7 +360,10 @@ test_CER_SWHASHP <- function() {
   
   print(sprintf("Difference         = %f", calc_SWHASHP_qty_total - raw_SWHASHP_qty_total))
   print(sprintf("Difference percent = %f", 100*(calc_SWHASHP_qty_total-raw_SWHASHP_qty_total)/raw_SWHASHP_qty_total))
-}
+
+  browser(text="End of test_CER_SWHASHP function")  
+  
+  }
 
 
 
@@ -341,6 +375,12 @@ tmp_folder <- paste(base_folder,"/tmp/",sep = "")
 output_folder <- paste(base_folder,"/Output/",sep = "")
 # test_folder <- paste(getwd(),"/test/",sep = "")
 run_time <- sprintf("%s",Sys.time())
+# Specify empty vectors in data.frame
+swhashp_totals <- data.frame(year = numeric(),          
+                     year_total = numeric(),
+                     total_qty = numeric() )
+
+
 
 sink(sprintf("CER tidydata:%s.log",run_time))
 print("CER tidydata Log")
@@ -363,9 +403,12 @@ print("Processing SWH_ASHP - SWHASHPqty.......")
 process_CER_raw_data("SWH_ASHP", "SWHASHP_qty")
 test_CER_SWHASHP()
 
+
+
 # now consolidate.......
-# read in PVqty_all years & PVkW_all years, join & save as .rds
-print("read in PVqty_all years & PVkW_all years, join & save as .rds")
+# read in all_years for PVqty, PVkW, SWHqty & SWHASHPqty
+# join & save as .rds
+print("read in all_years for PVqty, PVkW, SWHqty & SWHASHPqty, join & save as .rds")
 # https://www.statology.org/join-multiple-data-frames-dplyr/
 setwd(tmp_folder)
 data <- readRDS(file="CER_PVqty_all_years.rds") %>%
@@ -397,6 +440,11 @@ read_data <- readRDS(file=paste(output_folder,"CER_PVqty_kW_SWH_SWHASHP_all_year
 print("Calculate totals")
 calc_PV_qty_total <- sum(read_data$PV_qty,na.rm=TRUE)
 calc_PV_kW_total <- sum(read_data$PV_kW,na.rm=TRUE)
+calc_SWH_qty_total <- sum(read_data$SWH_qty,na.rm=TRUE)
+calc_SWHASHP_qty_total <- sum(read_data$SWHASHP_qty,na.rm=TRUE)
+
+how_many_duplicates <- sum(duplicated(read_data[,1:2]))
+
 
 print("read current - Postcode data for small-scale installations - SGU-Solar.csv")
 print("and extract totals")
@@ -419,6 +467,10 @@ print(sprintf("Raw PV total qty  = %f", raw_PV_qty_total))
 print(sprintf("Calc PV kW        = %f", calc_PV_kW_total))
 print(sprintf("Raw PV kW         = %f", raw_PV_kW_total))
 # Coolio ! - there's a very small discrepancy....
+
+
+
+
 
 # aggregate the sum of qty & kW for each postcode in the consolidated .rds
 print("aggregate the sum of qty & kW for each postcode in the consolidated .rds")
