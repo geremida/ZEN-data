@@ -13,11 +13,12 @@ output_folder <- paste(base_folder,"/Output/",sep = "")
 
 #process_CER_raw_data("SGU_Solar", "PV_kW")
 
-CER_type ="SWH_ASHP"
-CER_value = "SWHASHP_qty"
+CER_type ="SGU_Solar"
+CER_value = "PV_kW"
 
-# Specify empty vectors in data.frame
-swhashp_totals <- data.frame(year = numeric(),          
+# Specify empty vectors in data.frame for unit testing
+CER_totals <- data.frame(type = character(),
+                             year = numeric(),          
                              year_total = numeric(),
                              total_qty = numeric() )
 
@@ -45,6 +46,7 @@ swhashp_totals <- data.frame(year = numeric(),
   # EXCEPT - CER has changed the file mask for ASHP- current csv doesn't use some dashes
   # so create a special filelist for ASHP files
   # and for some strange reason 2005 has different format
+  # but as data in SWHASHP 2005 appears incorrect, will get from 2006 file instead
   if (CER_type =="SWH_ASHP") {
     file_pattern = "SWH-Air-source-heat-pump.csv"
     column_pattern_mask = "...Installations.Quantity"
@@ -57,7 +59,6 @@ swhashp_totals <- data.frame(year = numeric(),
     # file_list <- append(file_list,
     #   as.list(list.files(path=CER_data_folder,pattern = "Solar-Air-source-heat-pump.csv"))
     # )
-    
   }else {
     # create list of files matching the pattern
     file_list <- as.list(list.files(path=CER_data_folder,pattern = file_pattern))  
@@ -84,45 +85,16 @@ swhashp_totals <- data.frame(year = numeric(),
     # now cast to numeric
     data[all_columns] <- sapply(data[all_columns],as.numeric)
     # http://www.r-tutor.com/r-introduction/data-frame/data-frame-column-vector
-    
-        #rename column in index positions 1 and 2
-    # data <- rename(data, Postcode = 1,
-    #                      Previous = 2)  # but what if 2 is not Previous ????
-#    View(data)
 # check if any duplicate postcodes
     my_duplicated <- duplicated(data[,1])
-    print(sprintf("Duplicate Postcode         = %f", sum(my_duplicated)))
-#    View(data[my_duplicated,])
-#    readline("press something to continue....")
+    if(sum(my_duplicated)>0) {
+      print(sprintf("Duplicate Postcode         = %f", sum(my_duplicated)))
     # https://www.biostars.org/p/304213/
     # remove duplicates - keep highest value of a column
-    # data <- data[order(data$Postcode, -abs(data$Previous) ), ] ### sort first
-    # data <- data[ !duplicated(data$Postcode), ]  ### Keep highest
-# this seems to work ok
     # try it with [[1]] & [[2]]
     data <- data[order(data[[1]], -abs(data[[2]]) ), ] ### sort first
     data <- data[ !duplicated(data[[1]]), ]  ### Keep highest
-# 
-#     readline("press something to continue....")    
-#     
-#     # now make all columns numeric, except first one (postcode)
-#     all_columns <- colnames(data)
-#     all_columns_except_first <- all_columns[-1]
-#     # ========================
-#     # Removing commas from selected columns
-#     # Prior to setting to numeric, otherwise will get NA when casting
-#     # https://statisticsglobe.com/modify-numbers-with-comma-as-thousand-separator-in-r
-#     data[ , all_columns_except_first] <- 
-#       lapply(data[ , all_columns_except_first],
-#              function(x){ as.numeric(as.character(gsub(",", "", x))) })
-#     # now cast to numeric
-#     data[all_columns_except_first] <- sapply(data[all_columns_except_first],as.numeric)
-#     # make column one (postcode) to character
-#     # ================ try as integer instead ===================
-#     #    data[1] <- sapply(data[1],as.character)
-#     # do this later just before saving......
-#     
-#     
+    }
     if(is.na(filename_year)) {
       # current data doesn't have yyyy in filename
       # column_pattern will be like  "[a-zA-Z]+.[0-9]+...Installations.Quantity"
@@ -142,16 +114,16 @@ swhashp_totals <- data.frame(year = numeric(),
     column_list_vector <- as.vector(
       na.omit(
         str_match(colnames(data),column_pattern)))
+# grab the total installations quantity OR kW before doing pivot
+# ignoring any NAs
+    if(write_filename_mask == "CER_PVkW") {
+      CER_total_qty = sum(data$SGU.Rated.Output.In.kW.Total,na.rm = TRUE) 
+    } else {
+      CER_total_qty = sum(data$Installations.Quantity.Total,na.rm = TRUE) 
+    }
     # for now, values_to generic "CER_value_col"
     # and then rename the column just before saving
     # Note that pivot_longer is preferred over gather - https://tidyr.tidyverse.org/reference/pivot_longer.html
-
-# grab the total installations quantity before doing pivot
-# ignoring any NAs
-    CER_total_qty = sum(data$Installations.Quantity.Total,na.rm = TRUE) 
-    # save the state of data frame
-    df <- data
-    
     data <- pivot_longer(data,
                          cols = all_of(column_list_vector),
                          names_to = "year_month_string",
@@ -171,28 +143,14 @@ swhashp_totals <- data.frame(year = numeric(),
                    %m-% days(1)
     )
     # rename the postcode column
-    # already done above.....
     data <- rename(data, Postcode = 1)
-#    data <- rename(data, Postcode = Small.Unit.Installation.Postcode)
     # and make Postcode column integer
     data <- data %>% mutate(Postcode = as.integer((Postcode))) 
-    
-    if(CER_value == "SWHASHP_qty") {
       # before we remove columns, get the sum of last column & save it
-#      browser(text="about to SWHASHP adding rows for years")
-      swhashp_totals <- swhashp_totals %>% add_row(year=as.integer(filename_year),
-                                                   year_total = sum(data$CER_value_col,na.rm = TRUE),
-                                                   total_qty = CER_total_qty)
-      # if(!is.na(filename_year))  {
-      #       if(filename_year==2015) {
-      #       browser(text="SWHASHP added rows for 2015")
-      #       }
-      # }
-    }
-    
-    
-    
-    
+      CER_totals <- CER_totals %>% add_row(type = write_filename_mask,
+                                                  year=as.integer(filename_year),
+                                                  year_total = sum(data$CER_value_col,na.rm = TRUE),
+                                                  total_qty = CER_total_qty)
     # now just retain the columns we want
     data <- data[,names(data) %in% c("Postcode",
                                      "year_month","CER_value_col")]
@@ -225,38 +183,10 @@ swhashp_totals <- data.frame(year = numeric(),
     data <- data[
       with(data, order(Postcode, year_month)),
     ]
-    #    View(data)
     # save the tidy data format as .rds
     print(sprintf("Saving %s",write_filename)) 
     saveRDS(data, paste(tmp_folder,write_filename,sep = ""))
   }
-
-  my_CER_data_check = sum(data[,ncol(data)],na.rm = TRUE)
-  
-  CER_total_qty_check = sum(df$Installations.Quantity.Total) 
-  my_CER_check = sum(df[,ncol(df)],na.rm = TRUE)
-  
-  count_NA = sum(is.na(df$Installations.Quantity.Total))
-  my_NA_list <- is.na(df$Installations.Quantity.Total)
-  
-# seems like the 2015 data in the CER missed-named file labelled 2015
-# is different to the 2015 data contained in the file labelled 2016
-# so could do a data hack, and copy the 2016 one and give it label of 2015
-# and ignore the Solar 2015 one.....
-# and see if that fixes the disprepencies
-# - only problem is that progressive total checks won't work.....
-  
-# changed code to skip dodgy 2015 SWH_ASHP file
-# and use 2016 file for 2015 & 2016 data
-# fixed a little bug due to early column renaming
-# SWH_ASHP data now looks to be processing corectly
-  
-# Next step is to refactor these changes on debugging.R
-# back into CER_tidydata.R
-  
-  
-  
-    
   # E N D   O F   L O O P  - should now have rds files for each year + current
   # Now create a consolidated file of all years data for eg PVqty, PVkW, etc
   # Read all the CER_PVqty/kW, etc rds files into a dataframe
